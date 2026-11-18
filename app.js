@@ -1,4 +1,3 @@
-
 // ==========================================
 // CONTROLADOR DA INTERFACE (app.js)
 // ==========================================
@@ -230,7 +229,7 @@ function renderApp() {
 
         const sortedSegments = Object.entries(segmentCounts)
             .sort((a, b) => b[1] - a[1])
-            .slice(0, 5);
+            .slice(0, 8);
 
         const total = filtered.length || 1;
 
