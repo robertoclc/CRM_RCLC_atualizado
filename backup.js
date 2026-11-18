@@ -83,9 +83,6 @@ async function carregarReferenciaPasta() {
 // PROTEÇÃO DA INICIALIZAÇÃO DO CRM
 // ==========================================
 
-// Se as bases não puderem ser carregadas, o CRM ficará
-// bloqueado para gravações até uma restauração válida.
-
 let CRM_INICIALIZACAO_BLOQUEADA = false;
 let CRM_MOTIVO_BLOQUEIO = '';
 
@@ -120,7 +117,6 @@ function loadProspectsData() {
         }
     });
 
-    // Nenhuma base válida: impede que o CRM grave uma base vazia.
     if (basesValidas.length === 0) {
         CRM_INICIALIZACAO_BLOQUEADA = true;
         CRM_MOTIVO_BLOQUEIO = 'Nenhuma base válida foi encontrada.';
@@ -139,7 +135,6 @@ function loadProspectsData() {
         return [];
     }
 
-    // Seleciona a base com maior quantidade de registros.
     basesValidas.sort((a, b) => {
         if (b.dados.length !== a.dados.length) {
             return b.dados.length - a.dados.length;
@@ -153,7 +148,6 @@ function loadProspectsData() {
 
     const baseEscolhida = basesValidas[0];
 
-    // Se todas as bases válidas estiverem vazias, bloqueia a gravação.
     if (baseEscolhida.dados.length === 0) {
         CRM_INICIALIZACAO_BLOQUEADA = true;
         CRM_MOTIVO_BLOQUEIO = 'As bases encontradas estão vazias.';
@@ -186,8 +180,6 @@ function loadProspectsData() {
 
 function saveProspectsData(prospectsArray, permitirRecuperacao = false) {
 
-    // Impede gravações quando a inicialização detectou
-    // ausência de dados ou bases vazias.
     if (CRM_INICIALIZACAO_BLOQUEADA && !permitirRecuperacao) {
         const mensagem =
             'GRAVAÇÃO BLOQUEADA POR SEGURANÇA.\n\n' +
@@ -213,7 +205,6 @@ function saveProspectsData(prospectsArray, permitirRecuperacao = false) {
         throw new Error('Não foi possível preparar os dados para gravação.');
     }
 
-    // Não permite salvar uma lista vazia como recuperação.
     if (permitirRecuperacao && prospectsArray.length === 0) {
         throw new Error(
             'A restauração foi impedida porque o arquivo está vazio.'
@@ -224,7 +215,6 @@ function saveProspectsData(prospectsArray, permitirRecuperacao = false) {
         localStorage.setItem('prospects', dadosJSON);
         localStorage.setItem('rclc_crm_prospects', dadosJSON);
 
-        // Uma restauração válida libera novamente a gravação.
         if (permitirRecuperacao) {
             CRM_INICIALIZACAO_BLOQUEADA = false;
             CRM_MOTIVO_BLOQUEIO = '';
@@ -249,27 +239,223 @@ function saveProspectsData(prospectsArray, permitirRecuperacao = false) {
 
 
 // ==========================================
-// FORMATAÇÃO DE DATAS
+// FUNÇÕES AUXILIARES PARA IMPORTAÇÃO
 // ==========================================
 
+function normalizarCabecalhoExcel(valor) {
+    return String(valor || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
+}
+
+
+function obterValorColunaExcel(registro, aliases) {
+    const chaves = Object.keys(registro);
+    const aliasesNormalizados = aliases.map(normalizarCabecalhoExcel);
+
+    for (const alias of aliasesNormalizados) {
+        const chaveEncontrada = chaves.find(chave => {
+            return normalizarCabecalhoExcel(chave) === alias;
+        });
+
+        if (chaveEncontrada !== undefined) {
+            const valor = registro[chaveEncontrada];
+
+            if (
+                valor !== undefined &&
+                valor !== null &&
+                String(valor).trim() !== ''
+            ) {
+                return valor;
+            }
+        }
+    }
+
+    return '';
+}
+
+
 function formatarDataBR(dataBruta) {
-    if (!dataBruta) {
-        return new Date().toLocaleDateString('pt-BR');
+    if (
+        dataBruta === undefined ||
+        dataBruta === null ||
+        String(dataBruta).trim() === ''
+    ) {
+        return '';
+    }
+
+    if (dataBruta instanceof Date && !isNaN(dataBruta.getTime())) {
+        return [
+            String(dataBruta.getDate()).padStart(2, '0'),
+            String(dataBruta.getMonth() + 1).padStart(2, '0'),
+            dataBruta.getFullYear()
+        ].join('/');
     }
 
     const str = String(dataBruta).trim();
 
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) {
-        return str;
+    const dataBR = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+
+    if (dataBR) {
+        return (
+            String(dataBR[1]).padStart(2, '0') + '/' +
+            String(dataBR[2]).padStart(2, '0') + '/' +
+            dataBR[3]
+        );
+    }
+
+    const dataISO = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+
+    if (dataISO) {
+        return (
+            String(dataISO[3]).padStart(2, '0') + '/' +
+            String(dataISO[2]).padStart(2, '0') + '/' +
+            dataISO[1]
+        );
     }
 
     const data = new Date(dataBruta);
 
     if (!isNaN(data.getTime())) {
-        return data.toLocaleDateString('pt-BR');
+        return [
+            String(data.getDate()).padStart(2, '0'),
+            String(data.getMonth() + 1).padStart(2, '0'),
+            data.getFullYear()
+        ].join('/');
     }
 
     return str;
+}
+
+
+function identificarLinkWhatsApp(valor) {
+    const texto = String(valor || '').trim();
+
+    if (!texto) return '';
+
+    const textoMinusculo = texto.toLowerCase();
+
+    if (
+        textoMinusculo.includes('wa.me/') ||
+        textoMinusculo.includes('whatsapp.com/') ||
+        textoMinusculo.includes('api.whatsapp.com/')
+    ) {
+        try {
+            const url = new URL(
+                texto.match(/^https?:\/\//i) ? texto : `https://${texto}`
+            );
+
+            const host = url.hostname.toLowerCase();
+
+            const hostsValidos = [
+                'wa.me',
+                'www.wa.me',
+                'whatsapp.com',
+                'www.whatsapp.com',
+                'api.whatsapp.com'
+            ];
+
+            if (hostsValidos.includes(host)) {
+                return url.href;
+            }
+        } catch (erro) {
+            return '';
+        }
+    }
+
+    return '';
+}
+
+
+function normalizarTelefoneImportado(valor) {
+    return String(valor || '').trim();
+}
+
+
+function converterStatusImportado(statusBruto) {
+    const status = normalizarCabecalhoExcel(statusBruto);
+
+    if (!status) {
+        return 'Novo prospect';
+    }
+
+    if (
+        status.includes('seminteresse') ||
+        status.includes('naoteminteresse')
+    ) {
+        return 'Sem interesse';
+    }
+
+    if (
+        status.includes('avaliandoproposta') ||
+        status.includes('negociacao') ||
+        status.includes('respondeu') ||
+        status.includes('emnegociacao')
+    ) {
+        return 'Em negociação';
+    }
+
+    if (
+        status.includes('conquistado') ||
+        status.includes('cliente') ||
+        status.includes('convertido')
+    ) {
+        return 'Cliente conquistado';
+    }
+
+    if (
+        status.includes('semcontato') ||
+        status === 'naocontatado'
+    ) {
+        return 'Sem contato';
+    }
+
+    if (
+        status.includes('terceirocontato') ||
+        status.includes('terceiramensagem') ||
+        status.includes('3ocontato') ||
+        status.includes('3ocont') ||
+        status.startsWith('3o') ||
+        status.startsWith('3a')
+    ) {
+        return 'Terceiro contato enviado';
+    }
+
+    if (
+        status.includes('segundocontato') ||
+        status.includes('segundamensagem') ||
+        status.includes('2amensagem') ||
+        status.includes('2ocontato') ||
+        status.includes('2ocont') ||
+        status.startsWith('2o') ||
+        status.startsWith('2a')
+    ) {
+        return 'Segundo contato enviado';
+    }
+
+    if (
+        status.includes('primeirocontato') ||
+        status.includes('primeiramensagem') ||
+        status.includes('semrespostaprimeirocontato') ||
+        status.includes('zapcomprimeirocontato') ||
+        status.includes('1ocontato') ||
+        status.includes('1ocont') ||
+        status.startsWith('1o') ||
+        status.startsWith('1a')
+    ) {
+        return 'Primeiro contato enviado';
+    }
+
+    if (
+        status.includes('novoprospect') ||
+        status === 'novo'
+    ) {
+        return 'Novo prospect';
+    }
+
+    return 'Novo prospect';
 }
 
 
@@ -293,7 +479,7 @@ function importExcel(event, callback) {
     }
 
     if (statusCount) {
-        statusCount.innerText = 'A ler colunas e a detetar links do WhatsApp...';
+        statusCount.innerText = 'A ler colunas, datas e dados do WhatsApp...';
     }
 
     const reader = new FileReader();
@@ -322,244 +508,282 @@ function importExcel(event, callback) {
                 }
             );
 
-            const validRows = rows.filter(r => {
-                return Object.values(r).some(
-                    val =>
-                        val !== undefined &&
-                        val !== null &&
-                        String(val).trim() !== ''
-                );
+            const validRows = rows.filter(registro => {
+                return Object.values(registro).some(valor => {
+                    return (
+                        valor !== undefined &&
+                        valor !== null &&
+                        String(valor).trim() !== ''
+                    );
+                });
             });
 
-            if (validRows.length > 0) {
-                const mappedRows = validRows.map((r, index) => {
-                    let empresa = '';
-                    let telefone = '';
-                    let whatsappLink = '';
-                    let segmento = '';
-                    let statusBruto = '';
-                    let originVal = 'Google Maps';
-                    let notesList = [];
-
-                    const val1o = formatarDataBR(
-                        r['1o. Envio'] ||
-                        r['1o envio'] ||
-                        r['DT ENVIO'] ||
-                        ''
-                    );
-
-                    const val2o = formatarDataBR(
-                        r['2o. ENVIO'] ||
-                        r['2o env'] ||
-                        ''
-                    );
-
-                    const valRetorno = formatarDataBR(
-                        r['Dt Retorno'] ||
-                        r['dt retorno'] ||
-                        r['Retorno'] ||
-                        ''
-                    );
-
-                    if (String(val1o).trim() !== '') {
-                        notesList.push(`1º Envio: ${val1o}`);
-                    }
-
-                    if (String(val2o).trim() !== '') {
-                        notesList.push(`2º Envio: ${val2o}`);
-                    }
-
-                    if (String(valRetorno).trim() !== '') {
-                        notesList.push(`Retorno: ${valRetorno}`);
-                    }
-
-                    for (let key in r) {
-                        const kLower = key
-                            .toLowerCase()
-                            .normalize('NFD')
-                            .replace(/[\u0300-\u036f]/g, '')
-                            .trim();
-
-                        const val = r[key];
-
-                        if (
-                            val === undefined ||
-                            val === null ||
-                            val === ''
-                        ) {
-                            continue;
-                        }
-
-                        const valStr = String(val).trim();
-
-                        if (
-                            kLower.includes('link whats') ||
-                            kLower.includes('url whats') ||
-                            kLower.includes('api whats')
-                        ) {
-                            whatsappLink = valStr;
-
-                        } else if (
-                            kLower.includes('telef') ||
-                            kLower.includes('tel') ||
-                            kLower.includes('cel') ||
-                            kLower.includes('whats') ||
-                            kLower.includes('zap') ||
-                            kLower.includes('numero')
-                        ) {
-                            telefone = valStr;
-
-                        } else if (
-                            kLower.includes('empresa') ||
-                            kLower.includes('nome')
-                        ) {
-                            empresa = valStr;
-
-                        } else if (
-                            kLower.includes('segmento') ||
-                            kLower.includes('contato')
-                        ) {
-                            segmento = valStr;
-
-                        } else if (kLower.includes('origem')) {
-                            originVal = valStr;
-
-                        } else if (
-                            kLower.includes('status') ||
-                            kLower.includes('verificacao')
-                        ) {
-                            statusBruto = valStr;
-
-                        } else {
-                            if (
-                                !kLower.includes('envio') &&
-                                !kLower.includes('retorno') &&
-                                !kLower.includes('1o') &&
-                                !kLower.includes('2o') &&
-                                !kLower.includes('3o')
-                            ) {
-                                notesList.push(`${key}: ${valStr}`);
-                            }
-                        }
-                    }
-
-                    if (!whatsappLink) {
-                        for (let key in r) {
-                            const valStr = String(r[key]).trim();
-
-                            if (
-                                valStr.includes('wa.me/') ||
-                                valStr.includes('whatsapp.com')
-                            ) {
-                                whatsappLink = valStr;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (!empresa) empresa = 'Empresa Sem Nome';
-                    if (!segmento) segmento = 'Geral';
-
-                    let status = 'Novo prospect';
-
-                    const sLower = statusBruto
-                        .toLowerCase()
-                        .normalize('NFD')
-                        .replace(/[\u0300-\u036f]/g, '')
-                        .trim();
-
-                    if (sLower.includes('sem interesse')) {
-                        status = 'Sem interesse';
-
-                    } else if (
-                        sLower.includes('negociacao') ||
-                        sLower.includes('respondeu')
-                    ) {
-                        status = 'Em negociação';
-
-                    } else if (
-                        sLower.includes('conquistado') ||
-                        sLower.includes('cliente')
-                    ) {
-                        status = 'Cliente conquistado';
-
-                    } else if (sLower.includes('sem contato')) {
-                        status = 'Sem contato';
-
-                    } else if (
-                        sLower.includes('terceiro') ||
-                        sLower.includes('3o contato') ||
-                        sLower.includes('3º contato') ||
-                        /^3\b/.test(sLower)
-                    ) {
-                        status = 'Terceiro contato enviado';
-
-                    } else if (
-                        sLower.includes('segundo') ||
-                        sLower.includes('2o contato') ||
-                        sLower.includes('2º contato') ||
-                        /^2\b/.test(sLower)
-                    ) {
-                        status = 'Segundo contato enviado';
-
-                    } else if (
-                        sLower.includes('primeiro') ||
-                        sLower.includes('1o contato') ||
-                        sLower.includes('1º contato') ||
-                        /^1\b/.test(sLower)
-                    ) {
-                        status = 'Primeiro contato enviado';
-
-                    } else {
-                        status = statusBruto || 'Novo prospect';
-                    }
-
-                    const lastContact =
-                        valRetorno ||
-                        val2o ||
-                        val1o ||
-                        new Date().toLocaleDateString('pt-BR');
-
-                    return {
-                        id: r.id || (Date.now() + index),
-                        name: empresa,
-                        company: segmento,
-                        phone: telefone,
-                        whatsappLink: whatsappLink,
-                        origin: originVal,
-                        value: parseFloat(
-                            r['Valor'] || r['valor'] || 0
-                        ) || 0.00,
-                        status: status,
-                        lastContact: lastContact,
-                        notes: notesList.join(' | ')
-                    };
-                });
-
-                if (statusText) {
-                    statusText.innerText = 'Importação concluída com sucesso!';
-                }
-
-                if (statusCount) {
-                    statusCount.innerText =
-                        `${mappedRows.length} registos carregados com sucesso.`;
-                }
-
-                setTimeout(() => {
-                    if (statusBox) {
-                        statusBox.classList.add('hidden');
-                    }
-                }, 3500);
-
-                callback(mappedRows);
-
-            } else {
+            if (validRows.length === 0) {
                 if (statusBox) {
                     statusBox.classList.add('hidden');
                 }
 
                 alert('O ficheiro Excel parece estar vazio.');
+                return;
             }
+
+            const mappedRows = validRows.map((registro, index) => {
+                const notesList = [];
+
+                const empresa = obterValorColunaExcel(registro, [
+                    'Nome da empresa',
+                    'Empresa',
+                    'Nome',
+                    'Nome fantasia'
+                ]);
+
+                let telefone = normalizarTelefoneImportado(
+                    obterValorColunaExcel(registro, [
+                        'Telefone',
+                        'Telefone celular',
+                        'Celular',
+                        'Número',
+                        'Número de telefone',
+                        'WhatsApp'
+                    ])
+                );
+
+                const valorLinkWhats = obterValorColunaExcel(registro, [
+                    'Link Whats',
+                    'Link WhatsApp',
+                    'URL Whats',
+                    'URL WhatsApp',
+                    'API Whats'
+                ]);
+
+                let whatsappLink = identificarLinkWhatsApp(valorLinkWhats);
+
+                // Se a coluna Link Whats contiver apenas um número,
+                // utiliza esse número como telefone, caso esteja vazio.
+                if (
+                    !telefone &&
+                    valorLinkWhats &&
+                    !whatsappLink
+                ) {
+                    const possivelTelefone = String(valorLinkWhats).trim();
+
+                    const somenteNumeros = possivelTelefone.replace(/\D/g, '');
+
+                    if (
+                        somenteNumeros.length >= 10 &&
+                        somenteNumeros.length <= 13
+                    ) {
+                        telefone = possivelTelefone;
+                    }
+                }
+
+                const segmento = obterValorColunaExcel(registro, [
+                    'Segmento',
+                    'Ramo',
+                    'Categoria',
+                    'Atividade'
+                ]);
+
+                const statusBruto = obterValorColunaExcel(registro, [
+                    'Status de verificação',
+                    'Status verificacao',
+                    'Status',
+                    'Situação',
+                    'Situacao'
+                ]);
+
+                const origem = obterValorColunaExcel(registro, [
+                    'Origem',
+                    'Fonte'
+                ]);
+
+                const valor1o = formatarDataBR(
+                    obterValorColunaExcel(registro, [
+                        '1o. Envio',
+                        '1o Envio',
+                        '1º Envio',
+                        '1o envio',
+                        'Primeiro envio',
+                        'Data primeiro envio',
+                        'DT ENVIO'
+                    ])
+                );
+
+                const valor2o = formatarDataBR(
+                    obterValorColunaExcel(registro, [
+                        '2o. ENVIO',
+                        '2o ENVIO',
+                        '2º Envio',
+                        '2o envio',
+                        'Segundo envio',
+                        'Data segundo envio'
+                    ])
+                );
+
+                const valor3o = formatarDataBR(
+                    obterValorColunaExcel(registro, [
+                        '3o. ENVIO',
+                        '3o ENVIO',
+                        '3º Envio',
+                        '3o envio',
+                        'Terceiro envio',
+                        'Data terceiro envio'
+                    ])
+                );
+
+                const valorRetorno = formatarDataBR(
+                    obterValorColunaExcel(registro, [
+                        'Dt Retorno',
+                        'Data Retorno',
+                        'Data de Retorno',
+                        'Retorno'
+                    ])
+                );
+
+                if (valor1o) {
+                    notesList.push(`1º Envio: ${valor1o}`);
+                }
+
+                if (valor2o) {
+                    notesList.push(`2º Envio: ${valor2o}`);
+                }
+
+                if (valor3o) {
+                    notesList.push(`3º Envio: ${valor3o}`);
+                }
+
+                if (valorRetorno) {
+                    notesList.push(`Retorno: ${valorRetorno}`);
+                }
+
+                // Registra informações adicionais que não fazem parte
+                // dos campos principais da importação.
+                const cabecalhosReconhecidos = [
+                    'nomedaempresa',
+                    'empresa',
+                    'nome',
+                    'nomefantasia',
+                    'telefone',
+                    'telefonecelular',
+                    'celular',
+                    'numero',
+                    'numerodetelefone',
+                    'whatsapp',
+                    'linkwhats',
+                    'linkwhatsapp',
+                    'urlwhats',
+                    'urlwhatsapp',
+                    'apiwhats',
+                    'segmento',
+                    'ramo',
+                    'categoria',
+                    'atividade',
+                    'statusdeverificacao',
+                    'statusverificacao',
+                    'status',
+                    'situacao',
+                    'origem',
+                    'fonte',
+                    '1oenvio',
+                    '1envio',
+                    'primeiroenvio',
+                    'dataprimeiroenvio',
+                    'dtenvio',
+                    '2oenvio',
+                    '2envio',
+                    'segundoenvio',
+                    'datasegundoenvio',
+                    '3oenvio',
+                    '3envio',
+                    'terceiroenvio',
+                    'dataterceiroenvio',
+                    'dtretorno',
+                    'dataretorno',
+                    'dataderetorno',
+                    'retorno',
+                    'valor'
+                ];
+
+                Object.keys(registro).forEach(chave => {
+                    const valor = registro[chave];
+
+                    if (
+                        valor === undefined ||
+                        valor === null ||
+                        String(valor).trim() === ''
+                    ) {
+                        return;
+                    }
+
+                    const chaveNormalizada = normalizarCabecalhoExcel(chave);
+
+                    if (!cabecalhosReconhecidos.includes(chaveNormalizada)) {
+                        notesList.push(`${chave}: ${String(valor).trim()}`);
+                    }
+                });
+
+                const statusConvertido = converterStatusImportado(statusBruto);
+
+                if (
+                    statusBruto &&
+                    statusConvertido === 'Novo prospect' &&
+                    normalizarCabecalhoExcel(statusBruto) !== 'novo' &&
+                    normalizarCabecalhoExcel(statusBruto) !== 'novoprospect'
+                ) {
+                    notesList.push(`Status original: ${String(statusBruto).trim()}`);
+                }
+
+                const valorImportado = obterValorColunaExcel(registro, [
+                    'Valor',
+                    'Valor estimado',
+                    'Valor potencial'
+                ]);
+
+                const valorNumerico = parseFloat(
+                    String(valorImportado || '0')
+                        .replace(/\./g, '')
+                        .replace(',', '.')
+                ) || 0;
+
+                const lastContact =
+                    valorRetorno ||
+                    valor3o ||
+                    valor2o ||
+                    valor1o ||
+                    '';
+
+                return {
+                    id: registro.id || (Date.now() + index),
+                    name: String(empresa || 'Empresa Sem Nome').trim(),
+                    company: String(segmento || 'Geral').trim(),
+                    phone: telefone,
+                    whatsappLink: whatsappLink,
+                    origin: String(origem || 'Google Maps').trim(),
+                    value: valorNumerico,
+                    status: statusConvertido,
+                    lastContact: lastContact,
+                    notes: notesList.join(' | ')
+                };
+            });
+
+            if (statusText) {
+                statusText.innerText = 'Leitura da planilha concluída!';
+            }
+
+            if (statusCount) {
+                statusCount.innerText =
+                    `${mappedRows.length} registros preparados para importação.`;
+            }
+
+            setTimeout(() => {
+                if (statusBox) {
+                    statusBox.classList.add('hidden');
+                }
+            }, 3500);
+
+            // A função apenas entrega os registros ao app.js.
+            // A inclusão e complementação serão tratadas no controlador.
+            callback(mappedRows);
 
         } catch (err) {
             console.error('Erro ao importar Excel:', err);
@@ -569,7 +793,19 @@ function importExcel(event, callback) {
             }
 
             alert('Erro ao ler o ficheiro Excel: ' + err.message);
+
+        } finally {
+            event.target.value = '';
         }
+    };
+
+    reader.onerror = function() {
+        if (statusBox) {
+            statusBox.classList.add('hidden');
+        }
+
+        alert('Não foi possível ler o arquivo selecionado.');
+        event.target.value = '';
     };
 
     reader.readAsArrayBuffer(file);
@@ -602,7 +838,6 @@ async function exportJSON(prospectsArray) {
     try {
         let pastaBackup = null;
 
-        // Primeiro tenta recuperar a pasta já autorizada.
         try {
             const pastaSalva = await carregarReferenciaPasta();
 
@@ -629,7 +864,6 @@ async function exportJSON(prospectsArray) {
             );
         }
 
-        // Se ainda não existe pasta autorizada, solicita a seleção inicial.
         if (!pastaBackup) {
             alert(
                 'Na primeira utilização, selecione a pasta CRM_RCLC_atualizado.\n\n' +
@@ -785,8 +1019,6 @@ function handleRestoreBackup(event) {
         if (!confirmar) return;
 
         try {
-            // A restauração é uma ação explícita do usuário.
-            // Ela pode liberar o bloqueio de inicialização.
             saveProspectsData(importedData, true);
 
             prospects = importedData;

@@ -20,6 +20,89 @@ function saveData() {
     saveProspectsData(prospects);
 }
 
+// ==========================================
+// WHATSAPP - VALIDAÇÃO E GERAÇÃO CENTRALIZADA
+// ==========================================
+
+function normalizeWhatsAppNumber(value) {
+    if (!value) return '';
+
+    let digits = String(value).replace(/\D/g, '');
+
+    if (digits.startsWith('00')) {
+        digits = digits.substring(2);
+    }
+
+    if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+        return digits;
+    }
+
+    if (digits.length === 10 || digits.length === 11) {
+        return '55' + digits;
+    }
+
+    return '';
+}
+
+function getWhatsAppUrl(prospect) {
+    if (!prospect) return '';
+
+    const linkValue = String(prospect.whatsappLink || '').trim();
+
+    if (linkValue) {
+        let candidate = linkValue;
+
+        if (/^(wa\.me\/|www\.wa\.me\/|api\.whatsapp\.com\/|www\.whatsapp\.com\/|whatsapp\.com\/)/i.test(candidate)) {
+            candidate = 'https://' + candidate;
+        }
+
+        if (/^https?:\/\//i.test(candidate)) {
+            try {
+                const parsed = new URL(candidate);
+                const host = parsed.hostname.toLowerCase();
+
+                const validHosts = [
+                    'wa.me',
+                    'www.wa.me',
+                    'whatsapp.com',
+                    'www.whatsapp.com',
+                    'api.whatsapp.com'
+                ];
+
+                if (validHosts.includes(host)) {
+                    const pathNumber = parsed.pathname.replace(/\D/g, '');
+                    const queryNumber = parsed.searchParams.get('phone') || '';
+                    const number = normalizeWhatsAppNumber(queryNumber || pathNumber);
+
+                    if (number) {
+                        return parsed.href;
+                    }
+                }
+            } catch (error) {
+                // Link inválido: tenta utilizar o telefone cadastrado.
+            }
+        }
+
+        const numberFromLink = normalizeWhatsAppNumber(linkValue);
+
+        if (numberFromLink) {
+            return `https://wa.me/${numberFromLink}`;
+        }
+    }
+
+    const phoneNumber = normalizeWhatsAppNumber(prospect.phone);
+
+    if (phoneNumber) {
+        return `https://wa.me/${phoneNumber}`;
+    }
+
+    return '';
+}
+
+// ==========================================
+// NAVEGAÇÃO ENTRE VISUALIZAÇÕES
+// ==========================================
+
 function switchView(view) {
     currentView = view;
     const kanbanWrapper = document.getElementById('kanbanLayoutWrapper');
@@ -51,6 +134,10 @@ function switchView(view) {
 
     renderApp();
 }
+
+// ==========================================
+// RENDERIZAÇÃO GERAL
+// ==========================================
 
 function renderApp() {
     const searchInput = document.getElementById('searchInput');
@@ -98,7 +185,6 @@ function renderApp() {
     if (funnelBars && currentView === 'dashboard') {
         const total = filtered.length || 1;
 
-        // Lista explícita para garantir a presença de todas as etapas.
         const dashboardStatuses = [
             { key: 'Novo prospect', title: 'Novo Prospect' },
             { key: 'Primeiro contato enviado', title: '1º Contato' },
@@ -172,6 +258,10 @@ function renderApp() {
     }
 }
 
+// ==========================================
+// KANBAN
+// ==========================================
+
 function renderKanban(data) {
     const kanbanContainer = document.getElementById('kanbanContainer');
     if (!kanbanContainer) return;
@@ -199,8 +289,7 @@ function renderKanban(data) {
                 const valNum = Number(p.value || 0);
                 const valFormatted = 'R$ ' + valNum.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
 
-                const phoneClean = p.phone ? String(p.phone).replace(/\D/g, '') : '';
-                const finalWhatsUrl = p.whatsappLink ? p.whatsappLink : (phoneClean ? `https://wa.me/55${phoneClean}` : '');
+                const finalWhatsUrl = getWhatsAppUrl(p);
 
                 cardsHtml += `
                     <div onclick="editLead(${p.id})" class="bg-white p-3 rounded-lg border border-slate-200 cursor-pointer shadow-sm hover:shadow transition">
@@ -213,7 +302,7 @@ function renderKanban(data) {
                         </div>
                         <div class="text-[10px] font-medium text-slate-500 mb-2 flex items-center gap-1">🏷️ ${escapeHtml(p.company || 'Geral')}</div>
                         <div class="flex justify-between items-center border-t border-slate-100 pt-2 text-[11px]">
-                            ${finalWhatsUrl ? `<a href="${finalWhatsUrl}" target="_blank" onclick="event.stopPropagation()" class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold hover:bg-emerald-100"><i class="fa-brands fa-whatsapp"></i> Whats</a>` : '<span class="text-slate-300 text-[10px]">Sem tel</span>'}
+                            ${finalWhatsUrl ? `<a href="${escapeHtml(finalWhatsUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold hover:bg-emerald-100"><i class="fa-brands fa-whatsapp"></i> Whats</a>` : '<span class="text-slate-300 text-[10px]">Sem tel</span>'}
                             <span class="font-bold text-emerald-600">${valFormatted}</span>
                         </div>
                     </div>
@@ -247,6 +336,10 @@ function renderKanban(data) {
     }
 }
 
+// ==========================================
+// TABELA
+// ==========================================
+
 function renderTable(data) {
     const tableContainer = document.getElementById('tableContainer');
     if (!tableContainer) return;
@@ -279,8 +372,7 @@ function renderTable(data) {
             const valNum = Number(p.value || 0);
             const valFormatted = 'R$ ' + valNum.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
 
-            const phoneClean = p.phone ? String(p.phone).replace(/\D/g, '') : '';
-            const finalWhatsUrl = p.whatsappLink ? p.whatsappLink : (phoneClean ? `https://wa.me/55${phoneClean}` : '');
+            const finalWhatsUrl = getWhatsAppUrl(p);
 
             tableBody.innerHTML += `
                 <tr onclick="editLead(${p.id})" class="border-b border-slate-100 hover:bg-slate-50 cursor-pointer">
@@ -289,7 +381,7 @@ function renderTable(data) {
                         <div class="text-[11px] text-slate-500 mt-0.5">🏷️ ${escapeHtml(p.company || 'Geral')}</div>
                     </td>
                     <td class="p-3 text-xs text-slate-600">${escapeHtml(p.origin || 'Google Maps')}</td>
-                    <td class="p-3 text-xs">${finalWhatsUrl ? `<a href="${finalWhatsUrl}" target="_blank" onclick="event.stopPropagation()" class="text-emerald-600 font-bold hover:underline">${escapeHtml(p.phone || 'Abrir WhatsApp')}</a>` : '-'}</td>
+                    <td class="p-3 text-xs">${finalWhatsUrl ? `<a href="${escapeHtml(finalWhatsUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="text-emerald-600 font-bold hover:underline">${escapeHtml(p.phone || 'Abrir WhatsApp')}</a>` : '-'}</td>
                     <td class="p-3"><span class="bg-slate-100 px-2 py-1 rounded text-[11px] font-semibold text-slate-700">${statusLabel}</span></td>
                     <td class="p-3 font-bold text-emerald-600 text-xs">${valFormatted}</td>
                     <td class="p-3 text-right" onclick="event.stopPropagation()">
@@ -322,6 +414,10 @@ function renderTable(data) {
     }
 }
 
+// ==========================================
+// PAGINAÇÃO
+// ==========================================
+
 function changeKanbanPage(statusKey, direction) {
     currentPages[statusKey] += direction;
     renderApp();
@@ -331,6 +427,10 @@ function changeTablePage(direction) {
     currentTablePage += direction;
     renderApp();
 }
+
+// ==========================================
+// CADASTRO DE PROSPECTS
+// ==========================================
 
 function openModal() {
     const modalTitle = document.getElementById('modalTitle');
@@ -343,6 +443,8 @@ function openModal() {
     if (leadForm) leadForm.reset();
     if (leadId) leadId.value = '';
     if (deleteBtn) deleteBtn.classList.add('hidden');
+    const conversationSection = document.getElementById('conversationSection');
+    if (conversationSection) conversationSection.classList.add('hidden');
     if (leadModal) leadModal.classList.remove('hidden');
 }
 
@@ -364,6 +466,7 @@ function editLead(id) {
     const originSelect = document.getElementById('originSelect');
     const valueInput = document.getElementById('valueInput');
     const notesInput = document.getElementById('notesInput');
+    const cityInput = document.getElementById('cityInput');
     const deleteBtn = document.getElementById('deleteBtn');
     const leadModal = document.getElementById('leadModal');
 
@@ -376,7 +479,12 @@ function editLead(id) {
     if (originSelect) originSelect.value = p.origin || 'Google Maps';
     if (valueInput) valueInput.value = p.value || 0;
     if (notesInput) notesInput.value = p.notes || '';
+    if (cityInput) cityInput.value = p.city || '';
     if (deleteBtn) deleteBtn.classList.remove('hidden');
+    const conversationSection = document.getElementById('conversationSection');
+    if (conversationSection) conversationSection.classList.remove('hidden');
+    prepareConversationForm();
+    renderConversationHistory();
     if (leadModal) leadModal.classList.remove('hidden');
 }
 
@@ -392,18 +500,23 @@ function saveProspect(event) {
     const originSelect = document.getElementById('originSelect');
     const valueInput = document.getElementById('valueInput');
     const notesInput = document.getElementById('notesInput');
+    const cityInput = document.getElementById('cityInput');
+    const existingProspect = id ? prospects.find(item => item.id === Number(id)) : null;
 
     const data = {
+        ...(existingProspect || {}),
         id: id ? Number(id) : Date.now(),
         name: companyName ? companyName.value : 'Empresa Sem Nome',
         company: contactName ? contactName.value : 'Geral',
         phone: phone ? phone.value : '',
-        whatsappLink: '',
+        whatsappLink: existingProspect?.whatsappLink || '',
         origin: originSelect ? originSelect.value : 'Google Maps',
         value: valueInput ? parseFloat(valueInput.value) || 0 : 0,
         status: statusSelect ? statusSelect.value : 'Novo prospect',
         lastContact: new Date().toLocaleDateString('pt-BR'),
-        notes: notesInput ? notesInput.value : ''
+        notes: notesInput ? notesInput.value : '',
+        city: cityInput ? cityInput.value : (existingProspect?.city || ''),
+        conversations: Array.isArray(existingProspect?.conversations) ? existingProspect.conversations : []
     };
 
     if (id) {
@@ -426,13 +539,356 @@ function deleteProspect(id) {
     }
 }
 
+// ==========================================
+// IMPORTAÇÃO EXCEL - INTEGRAÇÃO SEGURA
+// ==========================================
+
+function normalizeImportName(value) {
+    return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '')
+        .trim();
+}
+
+function normalizeImportPhone(value) {
+    if (!value) return '';
+
+    let digits = String(value).replace(/\D/g, '');
+
+    if (digits.startsWith('00')) {
+        digits = digits.substring(2);
+    }
+
+    if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+        digits = digits.substring(2);
+    }
+
+    if (digits.length === 10 || digits.length === 11) {
+        return digits;
+    }
+
+    return '';
+}
+
+function getImportProspectPhone(prospect) {
+    const phone = normalizeImportPhone(prospect?.phone);
+
+    if (phone) return phone;
+
+    const link = String(prospect?.whatsappLink || '').trim();
+
+    if (link) {
+        try {
+            const url = new URL(
+                link.startsWith('http') ? link : `https://${link}`
+            );
+
+            const queryPhone = normalizeImportPhone(url.searchParams.get('phone'));
+
+            if (queryPhone) return queryPhone;
+
+            const pathPhone = normalizeImportPhone(url.pathname);
+
+            if (pathPhone) return pathPhone;
+        } catch (error) {
+            return normalizeImportPhone(link);
+        }
+    }
+
+    return '';
+}
+
+function isImportFieldEmpty(value) {
+    return value === undefined ||
+        value === null ||
+        (typeof value === 'string' && value.trim() === '');
+}
+
+function findExistingImportedProspect(imported, existingList) {
+    const importedName = normalizeImportName(imported?.name);
+
+    if (
+        !importedName ||
+        importedName === normalizeImportName('Empresa Sem Nome')
+    ) {
+        return -1;
+    }
+
+    const importedPhone = getImportProspectPhone(imported);
+
+    const sameName = [];
+
+    existingList.forEach((existing, index) => {
+        if (normalizeImportName(existing?.name) === importedName) {
+            sameName.push({
+                index,
+                phone: getImportProspectPhone(existing)
+            });
+        }
+    });
+
+    if (!sameName.length) return -1;
+
+    // Primeiro: telefone igual identifica a empresa com maior segurança.
+    if (importedPhone) {
+        const exactMatches = sameName.filter(item =>
+            item.phone && item.phone === importedPhone
+        );
+
+        if (exactMatches.length === 1) {
+            return exactMatches[0].index;
+        }
+
+        // Mais de um registro com o mesmo telefone: não combina.
+        if (exactMatches.length > 1) {
+            return -1;
+        }
+    }
+
+    // Sem correspondência exata, só combina se existir
+    // um único cadastro com aquele nome e pelo menos um telefone vazio.
+    if (sameName.length === 1) {
+        const candidate = sameName[0];
+
+        if (!candidate.phone || !importedPhone) {
+            return candidate.index;
+        }
+    }
+
+    // Nome repetido ou telefones diferentes: adiciona como novo.
+    return -1;
+}
+
+function generateUniqueProspectId(usedIds) {
+    let newId = Date.now();
+
+    while (usedIds.has(String(newId))) {
+        newId++;
+    }
+
+    usedIds.add(String(newId));
+
+    return newId;
+}
+
+function appendImportedNotes(existingNotes, importedNotes) {
+    const current = String(existingNotes || '').trim();
+    const incoming = String(importedNotes || '').trim();
+
+    if (!incoming) return current;
+    if (!current) return incoming;
+
+    const currentParts = current
+        .split('|')
+        .map(item => item.trim().toLowerCase());
+
+    const newParts = incoming
+        .split('|')
+        .map(item => item.trim())
+        .filter(item => item && !currentParts.includes(item.toLowerCase()));
+
+    if (!newParts.length) return current;
+
+    return `${current} | ${newParts.join(' | ')}`;
+}
+
+function mergeImportedProspects(importedRows) {
+    if (!Array.isArray(importedRows)) {
+        throw new Error('Os dados importados não estão em um formato válido.');
+    }
+
+    const mergedProspects = prospects.map(prospect => ({
+        ...prospect,
+        conversations: Array.isArray(prospect.conversations)
+            ? [...prospect.conversations]
+            : []
+    }));
+
+    const usedIds = new Set(
+        mergedProspects.map(prospect => String(prospect.id))
+    );
+
+    let addedCount = 0;
+    let updatedCount = 0;
+    let ignoredCount = 0;
+
+    importedRows.forEach(imported => {
+        if (!imported || typeof imported !== 'object') {
+            ignoredCount++;
+            return;
+        }
+
+        const importedName = String(imported.name || '').trim();
+
+        if (
+            !importedName ||
+            normalizeImportName(importedName) === normalizeImportName('Empresa Sem Nome')
+        ) {
+            ignoredCount++;
+            return;
+        }
+
+        const existingIndex = findExistingImportedProspect(
+            imported,
+            mergedProspects
+        );
+
+        // ==========================================
+        // EMPRESA NOVA
+        // ==========================================
+
+        if (existingIndex === -1) {
+            const newProspect = {
+                ...imported,
+                id: generateUniqueProspectId(usedIds),
+                conversations: Array.isArray(imported.conversations)
+                    ? [...imported.conversations]
+                    : []
+            };
+
+            mergedProspects.push(newProspect);
+            addedCount++;
+            return;
+        }
+
+        // ==========================================
+        // EMPRESA EXISTENTE: COMPLEMENTA VAZIOS
+        // ==========================================
+
+        const existing = mergedProspects[existingIndex];
+        let wasUpdated = false;
+
+        const fieldsToComplete = [
+            'name',
+            'company',
+            'phone',
+            'whatsappLink',
+            'origin',
+            'status',
+            'lastContact',
+            'city'
+        ];
+
+        fieldsToComplete.forEach(field => {
+            if (
+                isImportFieldEmpty(existing[field]) &&
+                !isImportFieldEmpty(imported[field])
+            ) {
+                existing[field] = imported[field];
+                wasUpdated = true;
+            }
+        });
+
+        // Valor: só preenche quando o valor atual está vazio
+        // e o valor importado é numérico e positivo.
+        const currentValue = Number(existing.value);
+        const importedValue = Number(imported.value);
+
+        const currentValueIsEmpty =
+            existing.value === undefined ||
+            existing.value === null ||
+            existing.value === '' ||
+            (Number.isFinite(currentValue) && currentValue === 0);
+
+        if (
+            currentValueIsEmpty &&
+            imported.value !== undefined &&
+            imported.value !== null &&
+            imported.value !== '' &&
+            Number.isFinite(importedValue) &&
+            importedValue > 0
+        ) {
+            existing.value = importedValue;
+            wasUpdated = true;
+        }
+
+        // Notas são complementadas sem apagar as anteriores.
+        const updatedNotes = appendImportedNotes(
+            existing.notes,
+            imported.notes
+        );
+
+        if (updatedNotes !== String(existing.notes || '').trim()) {
+            existing.notes = updatedNotes;
+            wasUpdated = true;
+        }
+
+        // Histórico de conversas nunca é substituído pela importação.
+        // Mantém exatamente o histórico já existente.
+        if (!Array.isArray(existing.conversations)) {
+            existing.conversations = [];
+        }
+
+        if (wasUpdated) {
+            updatedCount++;
+        }
+    });
+
+    return {
+        prospects: mergedProspects,
+        addedCount,
+        updatedCount,
+        ignoredCount
+    };
+}
+
 function handleImportExcel(e) {
+    const originalProspects = prospects;
+
     importExcel(e, (data) => {
-        prospects = data;
-        saveData();
-        renderApp();
+        try {
+            if (!Array.isArray(data) || data.length === 0) {
+                alert('Nenhum registro válido foi encontrado na planilha.');
+                return;
+            }
+
+            const result = mergeImportedProspects(data);
+
+            prospects = result.prospects;
+
+            try {
+                saveData();
+            } catch (saveError) {
+                prospects = originalProspects;
+
+                alert(
+                    'Não foi possível salvar a importação. ' +
+                    'Sua base original foi preservada. ' +
+                    'Verifique o armazenamento do CRM e tente novamente.'
+                );
+
+                console.error('Erro ao salvar importação:', saveError);
+                return;
+            }
+
+            renderApp();
+
+            alert(
+                'Integração da planilha concluída!\n\n' +
+                `Novas empresas adicionadas: ${result.addedCount}\n` +
+                `Cadastros complementados: ${result.updatedCount}\n` +
+                `Linhas ignoradas: ${result.ignoredCount}\n\n` +
+                'Os dados já preenchidos e os históricos de conversas foram preservados.'
+            );
+
+        } catch (error) {
+            prospects = originalProspects;
+
+            alert(
+                'Ocorreu um erro durante a integração da planilha. ' +
+                'A base original foi mantida.'
+            );
+
+            console.error('Erro na integração da planilha:', error);
+        }
     });
 }
+
+// ==========================================
+// FUNÇÕES AUXILIARES
+// ==========================================
 
 function escapeHtml(text) {
     if (text === null || text === undefined) return '';
@@ -446,3 +902,151 @@ function escapeHtml(text) {
 }
 
 renderApp();
+
+
+// ==========================================
+// HISTÓRICO DE CONVERSAS POR PROSPECT
+// ==========================================
+
+function getCurrentConversationProspect() {
+    const id = Number(document.getElementById('leadId')?.value);
+    return prospects.find(item => item.id === id) || null;
+}
+
+function prepareConversationForm() {
+    const dateInput = document.getElementById('conversationDate');
+    const timeInput = document.getElementById('conversationTime');
+    const textInput = document.getElementById('conversationText');
+    const searchInput = document.getElementById('conversationSearch');
+    const directionInput = document.getElementById('conversationDirection');
+    const now = new Date();
+
+    if (dateInput) dateInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    if (timeInput) timeInput.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    if (textInput) textInput.value = '';
+    if (searchInput) searchInput.value = '';
+    if (directionInput) directionInput.value = 'enviada';
+}
+
+function addConversationEntry() {
+    const prospect = getCurrentConversationProspect();
+    const direction = document.getElementById('conversationDirection')?.value || 'enviada';
+    const date = document.getElementById('conversationDate')?.value || '';
+    const time = document.getElementById('conversationTime')?.value || '';
+    const messageInput = document.getElementById('conversationText');
+    const message = messageInput?.value.trim() || '';
+
+    if (!prospect) {
+        alert('Salve o cadastro do contato antes de registrar conversas.');
+        return;
+    }
+    if (!date || !time || !message) {
+        alert('Informe a data, o horário e o conteúdo da mensagem.');
+        return;
+    }
+
+    if (!Array.isArray(prospect.conversations)) prospect.conversations = [];
+    const newEntry = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        direction,
+        date,
+        time,
+        message,
+        createdAt: new Date().toISOString()
+    };
+    prospect.conversations.push(newEntry);
+    prospect.conversations.sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
+
+    try {
+        saveData();
+        if (messageInput) messageInput.value = '';
+        renderConversationHistory();
+    } catch (error) {
+        prospect.conversations = prospect.conversations.filter(item => String(item.id) !== String(newEntry.id));
+        alert('Não foi possível salvar a mensagem. Verifique o armazenamento do CRM.');
+    }
+}
+
+function renderConversationHistory() {
+    const prospect = getCurrentConversationProspect();
+    const list = document.getElementById('conversationHistoryList');
+    const count = document.getElementById('conversationCount');
+    const search = (document.getElementById('conversationSearch')?.value || '').trim().toLocaleLowerCase('pt-BR');
+    if (!list || !prospect) return;
+
+    const entries = Array.isArray(prospect.conversations) ? prospect.conversations : [];
+    if (count) count.textContent = `${entries.length} ${entries.length === 1 ? 'mensagem' : 'mensagens'}`;
+    const filtered = [...entries].filter(item => !search || String(item.message || '').toLocaleLowerCase('pt-BR').includes(search));
+    filtered.sort((a, b) => `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`));
+
+    if (!filtered.length) {
+        list.innerHTML = `<div class="text-center text-xs text-slate-400 border border-dashed border-slate-300 rounded-lg p-4">${entries.length ? 'Nenhuma mensagem corresponde à pesquisa.' : 'Ainda não há mensagens registradas para este contato.'}</div>`;
+        return;
+    }
+
+    list.innerHTML = filtered.map(item => {
+        const sent = item.direction === 'enviada';
+        const dateLabel = item.date ? item.date.split('-').reverse().join('/') : '';
+        return `
+            <article class="border ${sent ? 'border-sky-100 bg-sky-50/60' : 'border-emerald-100 bg-emerald-50/60'} rounded-lg p-3">
+                <div class="flex flex-wrap justify-between items-center gap-2 mb-2">
+                    <span class="text-[10px] font-extrabold uppercase ${sent ? 'text-sky-700' : 'text-emerald-700'}">${sent ? 'Enviada pela RCLC' : 'Recebida do cliente'}</span>
+                    <span class="text-[10px] text-slate-500">${escapeHtml(dateLabel)} às ${escapeHtml(item.time || '')}</span>
+                </div>
+                <p class="text-xs text-slate-700 whitespace-pre-wrap break-words">${escapeHtml(item.message || '')}</p>
+                <div class="flex justify-end flex-wrap gap-3 mt-3 text-[10px] font-semibold">
+                    <button type="button" onclick="copyConversationEntry('${String(item.id).replace(/[^a-zA-Z0-9_-]/g, '')}')" class="text-slate-600 hover:text-sky-700">Copiar</button>
+                    <button type="button" onclick="editConversationEntry('${String(item.id).replace(/[^a-zA-Z0-9_-]/g, '')}')" class="text-blue-600 hover:text-blue-800">Editar</button>
+                    <button type="button" onclick="deleteConversationEntry('${String(item.id).replace(/[^a-zA-Z0-9_-]/g, '')}')" class="text-rose-600 hover:text-rose-800">Excluir</button>
+                </div>
+            </article>`;
+    }).join('');
+}
+
+function findConversationEntry(entryId) {
+    const prospect = getCurrentConversationProspect();
+    if (!prospect || !Array.isArray(prospect.conversations)) return null;
+    return prospect.conversations.find(item => String(item.id) === String(entryId)) || null;
+}
+
+async function copyConversationEntry(entryId) {
+    const entry = findConversationEntry(entryId);
+    if (!entry) return;
+    try {
+        await navigator.clipboard.writeText(entry.message || '');
+        alert('Mensagem copiada.');
+    } catch (error) {
+        const helper = document.createElement('textarea');
+        helper.value = entry.message || '';
+        document.body.appendChild(helper);
+        helper.select();
+        const copied = document.execCommand('copy');
+        helper.remove();
+        alert(copied ? 'Mensagem copiada.' : 'Não foi possível copiar automaticamente.');
+    }
+}
+
+function editConversationEntry(entryId) {
+    const prospect = getCurrentConversationProspect();
+    const entry = findConversationEntry(entryId);
+    if (!prospect || !entry) return;
+    const updated = prompt('Edite o conteúdo da mensagem:', entry.message || '');
+    if (updated === null) return;
+    if (!updated.trim()) {
+        alert('A mensagem não pode ficar vazia.');
+        return;
+    }
+    entry.message = updated.trim();
+    entry.updatedAt = new Date().toISOString();
+    saveData();
+    renderConversationHistory();
+}
+
+function deleteConversationEntry(entryId) {
+    const prospect = getCurrentConversationProspect();
+    if (!prospect || !Array.isArray(prospect.conversations)) return;
+    if (!confirm('Deseja excluir esta mensagem do histórico?')) return;
+    prospect.conversations = prospect.conversations.filter(item => String(item.id) !== String(entryId));
+    saveData();
+    renderConversationHistory();
+}
