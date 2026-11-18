@@ -1,0 +1,173 @@
+/* ========================================== */
+/* ESTILOS DO CRM RCLC (style.css)            */
+/* ========================================== */
+
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+body { background-color: #f8fafc; color: #0f172a; min-height: 100vh; display: flex; flex-direction: column; }
+
+header { background-color: #034574; color: #ffffff; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+main { flex: 1; padding: 20px 24px; max-width: 1400px; margin: 0 auto; width: 100%; }
+
+/* Classes de controle de exibição das abas (Garante que nunca se sobrepõem) */
+.view-section { display: none; }
+.view-section.active-flex { display: flex; }
+.view-section.active-block { display: block; }
+.view-section.active-grid { display: grid; }
+
+/* Kanban Board & Colunas com Largura Uniforme e Fixa */
+.kanban-board { 
+    display: flex; 
+    gap: 16px; 
+    overflow-x: auto; 
+    padding-bottom: 16px; 
+    width: 100%; 
+}
+
+.kanban-column { 
+    min-width: 300px; 
+    max-width: 300px; 
+    width: 300px; 
+    flex-shrink: 0; 
+}
+
+/* Dashboard em Duas Colunas Lado a Lado */
+#dashboardContainer { 
+    grid-template-columns: 1fr 1fr; 
+    gap: 20px; 
+    width: 100%; 
+}
+
+@media (max-width: 1024px) {
+    #dashboardContainer { grid-template-columns: 1fr; }
+}
+
+/* =========================================
+   CRM RCLC - AJUSTE DAS 6 COLUNAS
+   ========================================= */
+
+/* Área principal do Kanban */
+#kanbanContainer {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  overflow-x: auto;
+  padding-bottom: 12px;
+  align-items: stretch;
+}
+
+/* Telas grandes: seis colunas visíveis */
+@media (min-width: 1200px) {
+  main {
+    max-width: 1800px;
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  #kanbanContainer {
+    gap: 8px;
+    overflow-x: hidden;
+  }
+
+  .kanban-column {
+    flex: 1 1 0 !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: none !important;
+  }
+
+  .kanban-column h3 {
+    font-size: 13px;
+  }
+}
+
+/* Telas menores: mantém a rolagem lateral */
+@media (max-width: 1199px) {
+  .kanban-column {
+    flex: 0 0 280px;
+    width: 280px;
+    min-width: 280px;
+  }
+}
+
+/* =========================================
+   CORES DAS ETAPAS DO FUNIL
+   ========================================= */
+
+/* 1 - Novo prospect */
+.kanban-column:nth-child(1) {
+  background-color: #f1f5f9;
+  border-top: 4px solid #94a3b8;
+}
+
+/* 2 - Primeiro contato */
+.kanban-column:nth-child(2) {
+  background-color: #eff6ff;
+  border-top: 4px solid #60a5fa;
+}
+
+/* 3 - Segundo contato */
+.kanban-column:nth-child(3) {
+  background-color: #f5f3ff;
+  border-top: 4px solid #a78bfa;
+}
+
+/* 4 - Terceiro contato */
+.kanban-column:nth-child(4) {
+  background-color: #fff7ed;
+  border-top: 4px solid #fb923c;
+}
+
+/* 5 - Em negociação: destaque */
+.kanban-column:nth-child(5) {
+  background-color: #dbeafe;
+  border-top: 5px solid #2563eb;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.14);
+}
+
+/* 6 - Cliente conquistado: destaque */
+.kanban-column:nth-child(6) {
+  background-color: #dcfce7;
+  border-top: 5px solid #16a34a;
+  box-shadow: 0 2px 10px rgba(22, 163, 74, 0.14);
+}
+
+/* Centralizar títulos das seis colunas do Kanban */
+.kanban-column h3 {
+  text-align: center;
+  width: 100%;
+}
+
+/* Melhorar o alinhamento do cabeçalho das colunas */
+.kanban-column > div:first-child {
+  text-align: center;
+}
+
+/* Centralização definitiva dos títulos das colunas */
+.kanban-column h3,
+.kanban-column h2,
+.kanban-column .column-title,
+.kanban-column .kanban-column-title {
+  text-align: center !important;
+  width: 100%;
+  display: block;
+}
+
+/* Centralizar o cabeçalho da coluna */
+.kanban-column > div:first-child {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center !important;
+}
+
+/* Centralizar também eventuais contadores */
+.kanban-column > div:first-child * {
+  text-align: center;
+}
+
+/* Destacar quantidade de prospects em cada coluna */
+.kanban-column > div:first-child span {
+  font-size: 18px !important;
+  font-weight: 800 !important;
+}
